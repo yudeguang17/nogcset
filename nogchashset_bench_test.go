@@ -22,28 +22,28 @@ func init() {
 	}
 }
 
-func BenchmarkSet(b *testing.B) {
+func BenchmarkAdd(b *testing.B) {
 	h := New()
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		h.Set(benchKB[i&(benchKeyCount-1)])
+		h.Add(benchKB[i&(benchKeyCount-1)])
 	}
 }
 
-func BenchmarkSetString(b *testing.B) {
+func BenchmarkAddString(b *testing.B) {
 	h := New()
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		h.SetString(benchKS[i&(benchKeyCount-1)])
+		h.AddString(benchKS[i&(benchKeyCount-1)])
 	}
 }
 
-func BenchmarkHas(b *testing.B) {
+func BenchmarkContain(b *testing.B) {
 	h := New()
 	for _, k := range benchKB {
-		h.Set(k)
+		h.Add(k)
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -54,10 +54,10 @@ func BenchmarkHas(b *testing.B) {
 	}
 }
 
-func BenchmarkHasString(b *testing.B) {
+func BenchmarkContainString(b *testing.B) {
 	h := New()
 	for _, k := range benchKS {
-		h.SetString(k)
+		h.AddString(k)
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -68,19 +68,19 @@ func BenchmarkHasString(b *testing.B) {
 	}
 }
 
-func BenchmarkSetThenDelete(b *testing.B) {
+func BenchmarkAddThenRemove(b *testing.B) {
 	h := New()
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		k := benchKB[i&(benchKeyCount-1)]
-		h.Set(k)
-		h.Delete(k)
+		h.Add(k)
+		h.Remove(k)
 	}
 }
 
 // 与标准库 map[string]struct{} 对照，说明基准口径。
-func BenchmarkStdMapSet(b *testing.B) {
+func BenchmarkStdMapAdd(b *testing.B) {
 	m := make(map[string]struct{}, benchKeyCount)
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -89,7 +89,7 @@ func BenchmarkStdMapSet(b *testing.B) {
 	}
 }
 
-func BenchmarkStdMapHas(b *testing.B) {
+func BenchmarkStdMapContain(b *testing.B) {
 	m := make(map[string]struct{}, benchKeyCount)
 	for _, k := range benchKS {
 		m[k] = struct{}{}

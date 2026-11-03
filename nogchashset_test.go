@@ -69,7 +69,7 @@ func TestSetHasDeleteAgainstStdMap(t *testing.T) {
 		keys = append(keys, []byte(fmt.Sprintf("key-%d-%s", i, strings.Repeat("x", i%64))))
 	}
 	for _, k := range keys {
-		h.Set(k)
+		h.Add(k)
 		ref[string(k)] = true
 	}
 	if h.Len() != len(ref) {
@@ -86,7 +86,7 @@ func TestSetHasDeleteAgainstStdMap(t *testing.T) {
 	// 删除一半
 	for i, k := range keys {
 		if i%2 == 0 {
-			h.Delete(k)
+			h.Remove(k)
 			delete(ref, string(k))
 		}
 	}
@@ -102,10 +102,10 @@ func TestSetHasDeleteAgainstStdMap(t *testing.T) {
 	// 重复删除、删除不存在的键都不应出错
 	for i, k := range keys {
 		if i%2 == 0 {
-			h.Delete(k)
+			h.Remove(k)
 		}
 	}
-	h.Delete([]byte("从来没有插入过的键"))
+	h.Remove([]byte("从来没有插入过的键"))
 	if h.Len() != len(ref) {
 		t.Fatalf("重复删除后 Len() = %d，期望 %d", h.Len(), len(ref))
 	}
@@ -113,23 +113,23 @@ func TestSetHasDeleteAgainstStdMap(t *testing.T) {
 
 func TestKeyLengthBoundaryAndPanic(t *testing.T) {
 	h := New()
-	h.Set([]byte("ok"))
+	h.Add([]byte("ok"))
 
 	// 边界内：65534 字节可用
 	maxKey := bytes.Repeat([]byte("M"), MaxKeyLen)
-	h.Set(maxKey)
+	h.Add(maxKey)
 	if !h.Contain(maxKey) {
 		t.Fatalf("长度 %d 的键应当可用", MaxKeyLen)
 	}
 
 	// 边界外：>= 65535 一律 panic，且不能静默截断
 	tooLong := bytes.Repeat([]byte("X"), keyLenThreshold)
-	assertPanic(t, "键长度必须小于 65535", func() { h.Set(tooLong) })
+	assertPanic(t, "键长度必须小于 65535", func() { h.Add(tooLong) })
 	assertPanic(t, "键长度必须小于 65535", func() { h.Contain(tooLong) })
-	assertPanic(t, "键长度必须小于 65535", func() { h.Delete(tooLong) })
-	assertPanic(t, "键长度必须小于 65535", func() { h.SetString(strings.Repeat("x", 70000)) })
+	assertPanic(t, "键长度必须小于 65535", func() { h.Remove(tooLong) })
+	assertPanic(t, "键长度必须小于 65535", func() { h.AddString(strings.Repeat("x", 70000)) })
 	assertPanic(t, "键长度必须小于 65535", func() { h.ContainString(strings.Repeat("x", 65535)) })
-	assertPanic(t, "键长度必须小于 65535", func() { h.DeleteString(strings.Repeat("x", 65535)) })
+	assertPanic(t, "键长度必须小于 65535", func() { h.RemoveString(strings.Repeat("x", 65535)) })
 
 	// panic 之后实例仍然可用，且超长键不会以任何形式进入集合
 	if !h.Contain([]byte("ok")) || !h.Contain(maxKey) || h.Len() != 2 {
@@ -139,19 +139,19 @@ func TestKeyLengthBoundaryAndPanic(t *testing.T) {
 
 func TestStringAndBytesInterop(t *testing.T) {
 	h := New()
-	h.SetString("abc")
+	h.AddString("abc")
 	if !h.Contain([]byte("abc")) {
-		t.Fatal("SetString 写入的键应当能被 Contain([]byte) 查到")
+		t.Fatal("AddString 写入的键应当能被 Contain([]byte) 查到")
 	}
-	h.Set([]byte("def"))
+	h.Add([]byte("def"))
 	if !h.ContainString("def") {
-		t.Fatal("Set([]byte) 写入的键应当能被 ContainString 查到")
+		t.Fatal("Add([]byte) 写入的键应当能被 ContainString 查到")
 	}
 	if h.Len() != 2 {
 		t.Fatalf("Len() = %d，期望 2", h.Len())
 	}
-	h.DeleteString("def")
-	h.Delete([]byte("abc"))
+	h.RemoveString("def")
+	h.Remove([]byte("abc"))
 	if h.Len() != 0 || h.Contain([]byte("abc")) || h.ContainString("def") {
 		t.Fatalf("跨类型删除失败：Len() = %d", h.Len())
 	}
@@ -163,8 +163,8 @@ func TestHashCollisionOverflowAndNoResidueAfterDelete(t *testing.T) {
 	idx := forceHashCollision(h)
 
 	// 第一个键进字节流，第二个键因为是同一个 hash 进回退 map
-	h.Set([]byte("first"))
-	h.Set([]byte("second"))
+	h.Add([]byte("first"))
+	h.Add([]byte("second"))
 	if h.Len() != 2 {
 		t.Fatalf("Len() = %d，期望 2", h.Len())
 	}
@@ -177,7 +177,7 @@ func TestHashCollisionOverflowAndNoResidueAfterDelete(t *testing.T) {
 	}
 
 	// 删掉字节流里的键，冲突键不受影响
-	h.Delete([]byte("first"))
+	h.Remove([]byte("first"))
 	if h.Contain([]byte("first")) {
 		t.Fatal("已删除的键仍被查到")
 	}
@@ -185,17 +185,17 @@ func TestHashCollisionOverflowAndNoResidueAfterDelete(t *testing.T) {
 		t.Fatal("冲突键被误删")
 	}
 
-	// 关键回归：字节流中的坑位空出来以后，再次 Set 冲突键，它不能再被写进字节流变成两份
-	h.Set([]byte("second"))
+	// 关键回归：字节流中的坑位空出来以后，再次 Add 冲突键，它不能再被写进字节流变成两份
+	h.Add([]byte("second"))
 	if h.Len() != 1 {
-		t.Fatalf("再次 Set 冲突键后 Len() = %d，期望 1（不能存在两份）", h.Len())
+		t.Fatalf("再次 Add 冲突键后 Len() = %d，期望 1（不能存在两份）", h.Len())
 	}
 	if len(b.index) != 0 || len(b.overflow) != 1 {
-		t.Fatalf("再次 Set 冲突键后 index=%d overflow=%d，期望 index=0 overflow=1", len(b.index), len(b.overflow))
+		t.Fatalf("再次 Add 冲突键后 index=%d overflow=%d，期望 index=0 overflow=1", len(b.index), len(b.overflow))
 	}
 
 	// 删除冲突键后必须查不到（不能残留）
-	h.Delete([]byte("second"))
+	h.Remove([]byte("second"))
 	if h.Contain([]byte("second")) {
 		t.Fatal("删除冲突键后仍能被查到（残留旧数据）")
 	}
@@ -204,7 +204,7 @@ func TestHashCollisionOverflowAndNoResidueAfterDelete(t *testing.T) {
 	}
 
 	// 坑位空出后，新键应当重新进入字节流
-	h.Set([]byte("third"))
+	h.Add([]byte("third"))
 	if len(b.index) != 1 || len(b.overflow) != 0 {
 		t.Fatalf("新键应写入字节流，实际 index=%d overflow=%d", len(b.index), len(b.overflow))
 	}
@@ -221,15 +221,15 @@ func TestConfigBelongsToInstanceNotGlobal(t *testing.T) {
 		t.Fatalf("h2.chunkSize = %d，期望 131072", h2.chunkSize)
 	}
 	// 建第二个实例之后，第一个实例的配置与行为都必须保持不变
-	h1.Set([]byte("a"))
-	h2.Set([]byte("b"))
+	h1.Add([]byte("a"))
+	h2.Add([]byte("b"))
 	for i := range h1.buckets {
 		if h1.buckets[i].chunkSize != 64*1024 {
 			t.Fatalf("h1 的分片 chunkSize 被其它实例改成了 %d", h1.buckets[i].chunkSize)
 		}
 	}
 	// 64KB 分片：65534 字节的键（键值对 65536 字节）应当独占一个 chunk
-	h1.Set(bytes.Repeat([]byte("K"), MaxKeyLen))
+	h1.Add(bytes.Repeat([]byte("K"), MaxKeyLen))
 	if !h1.Contain(bytes.Repeat([]byte("K"), MaxKeyLen)) {
 		t.Fatal("h1 在 64KB 分片下读不回最长键")
 	}
@@ -260,8 +260,8 @@ func TestMaxKeyExactlyFillsChunk(t *testing.T) {
 	idx := uint64(1) % bucketsNum
 	k1 := bytes.Repeat([]byte("A"), MaxKeyLen)
 	k2 := bytes.Repeat([]byte("B"), MaxKeyLen)
-	h.Set(k1)
-	h.Set(k2)
+	h.Add(k1)
+	h.Add(k2)
 	if h.Len() != 2 {
 		t.Fatalf("Len() = %d，期望 2", h.Len())
 	}
@@ -277,7 +277,7 @@ func TestMaxKeyExactlyFillsChunk(t *testing.T) {
 	if !h.Contain(k1) || !h.Contain(k2) {
 		t.Fatal("正好填满 chunk 的键读不回")
 	}
-	h.Delete(k1)
+	h.Remove(k1)
 	if h.Contain(k1) || !h.Contain(k2) {
 		t.Fatal("删除第一个键后状态不正确")
 	}
@@ -289,7 +289,7 @@ func TestCompactReclaimsSpace(t *testing.T) {
 	keys := make([][]byte, total)
 	for i := 0; i < total; i++ {
 		keys[i] = []byte(fmt.Sprintf("k-%d-%s", i, strings.Repeat("y", i%48)))
-		h.Set(keys[i])
+		h.Add(keys[i])
 	}
 	if h.Len() != total {
 		t.Fatalf("Len() = %d，期望 %d", h.Len(), total)
@@ -303,7 +303,7 @@ func TestCompactReclaimsSpace(t *testing.T) {
 			keep = append(keep, keys[i])
 			continue
 		}
-		h.Delete(keys[i])
+		h.Remove(keys[i])
 	}
 	afterBytes, afterChunks := chunkStat(h)
 	if h.Len() != len(keep) {
@@ -322,7 +322,7 @@ func TestCompactReclaimsSpace(t *testing.T) {
 	}
 	// 回收后还能继续正常写入
 	for i := 0; i < 1000; i++ {
-		h.Set([]byte(fmt.Sprintf("after-%d", i)))
+		h.Add([]byte(fmt.Sprintf("after-%d", i)))
 	}
 	if h.Len() != len(keep)+1000 {
 		t.Fatalf("回收后继续写入异常：Len() = %d", h.Len())
@@ -357,7 +357,7 @@ func TestConcurrentMixedOpsAgainstStdMap(t *testing.T) {
 				k := keyOf(g, i)
 				switch i % 3 {
 				case 0:
-					h.SetString(k)
+					h.AddString(k)
 					mu.Lock()
 					ref[k] = true
 					mu.Unlock()
@@ -371,7 +371,7 @@ func TestConcurrentMixedOpsAgainstStdMap(t *testing.T) {
 						}
 					}
 				case 2:
-					h.DeleteString(k)
+					h.RemoveString(k)
 					mu.Lock()
 					delete(ref, k)
 					mu.Unlock()

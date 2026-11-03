@@ -19,8 +19,8 @@ func TestNoAllocOnHotPaths(t *testing.T) {
 	ks := "some-key-for-alloc-test"
 	missing := []byte("no-such-key-at-all")
 	missingStr := "no-such-key-at-all"
-	h.Set(k)
-	h.SetString("another-key-that-exists")
+	h.Add(k)
+	h.AddString("another-key-that-exists")
 
 	// 先验证测量方法本身有效：显式做一次 string([]byte) 转换必须被测出分配
 	if got := testing.AllocsPerRun(100, func() { allocSink = string(k) }); got == 0 {
@@ -35,10 +35,10 @@ func TestNoAllocOnHotPaths(t *testing.T) {
 		{"Contain 未命中([]byte)", func() { h.Contain(missing) }},
 		{"ContainString 命中", func() { h.ContainString(ks) }},
 		{"ContainString 未命中", func() { h.ContainString(missingStr) }},
-		{"Set 已有键([]byte)", func() { h.Set(k) }},
-		{"Set 已有键(string)", func() { h.SetString("another-key-that-exists") }},
-		{"Delete 未命中([]byte)", func() { h.Delete(missing) }},
-		{"Delete 未命中(string)", func() { h.DeleteString(missingStr) }},
+		{"Add 已有键([]byte)", func() { h.Add(k) }},
+		{"Add 已有键(string)", func() { h.AddString("another-key-that-exists") }},
+		{"Remove 未命中([]byte)", func() { h.Remove(missing) }},
+		{"Remove 未命中(string)", func() { h.RemoveString(missingStr) }},
 		{"Len", func() { _ = h.Len() }},
 	}
 	for _, c := range cases {
@@ -47,23 +47,23 @@ func TestNoAllocOnHotPaths(t *testing.T) {
 		}
 	}
 
-	// Delete 命中是「一次性」操作，AllocsPerRun 的预热会先把键删掉，
+	// Remove 命中是「一次性」操作，AllocsPerRun 的预热会先把键删掉，
 	// 因此这里用 MemStats 直接测量一次真实删除的堆分配次数。
 	var before, after runtime.MemStats
 	runtime.GC()
 	runtime.ReadMemStats(&before)
-	h.Delete(k)
+	h.Remove(k)
 	runtime.ReadMemStats(&after)
 	if m := after.Mallocs - before.Mallocs; m != 0 {
-		t.Errorf("Delete 命中([]byte)：期望 0 次堆分配，实际 %d 次", m)
+		t.Errorf("Remove 命中([]byte)：期望 0 次堆分配，实际 %d 次", m)
 	}
-	h.SetString(ks)
+	h.AddString(ks)
 	runtime.GC()
 	runtime.ReadMemStats(&before)
-	h.DeleteString(ks)
+	h.RemoveString(ks)
 	runtime.ReadMemStats(&after)
 	if m := after.Mallocs - before.Mallocs; m != 0 {
-		t.Errorf("Delete 命中(string)：期望 0 次堆分配，实际 %d 次", m)
+		t.Errorf("Remove 命中(string)：期望 0 次堆分配，实际 %d 次", m)
 	}
 	if h.Contain(k) || h.ContainString(ks) {
 		t.Fatal("删除后仍存在")
@@ -83,7 +83,7 @@ func TestAmortizedAllocOnInsert(t *testing.T) {
 	runtime.GC()
 	runtime.ReadMemStats(&before)
 	for _, k := range keys {
-		h.Set(k)
+		h.Add(k)
 	}
 	runtime.ReadMemStats(&after)
 	if h.Len() != n {
@@ -118,7 +118,7 @@ func TestSmallFirstChunk(t *testing.T) {
 		},
 	)
 	b := &h.buckets[1]
-	h.Set([]byte("0"))
+	h.Add([]byte("0"))
 	if len(b.chunks) != 1 {
 		t.Fatalf("首次写入后 chunk 个数 = %d，期望 1", len(b.chunks))
 	}
@@ -128,7 +128,7 @@ func TestSmallFirstChunk(t *testing.T) {
 	// 继续写入，直到写满 4KB 并分配第二个 chunk
 	last := 0
 	for i := 1; i < 100000; i++ {
-		h.Set([]byte(strconv.Itoa(i)))
+		h.Add([]byte(strconv.Itoa(i)))
 		last = i
 		if len(b.chunks) > 1 {
 			break

@@ -168,14 +168,14 @@ func New(config ...Config) *HashSet {
 	return h
 }
 
-// Set 把键加入集合。键已存在时不做任何事（集合没有值，无需更新）。
+// Add 把键加入集合。键已存在时不做任何事（集合没有值，无需更新）。
 // 键长度必须小于 65535，否则 panic。
-func (h *HashSet) Set(k []byte) {
+func (h *HashSet) Add(k []byte) {
 	h.set(keyRef{b: k})
 }
 
-// SetString 是 Set 的 string 版本，键长度必须小于 65535，否则 panic。
-func (h *HashSet) SetString(k string) {
+// AddString 是 Add 的 string 版本，键长度必须小于 65535，否则 panic。
+func (h *HashSet) AddString(k string) {
 	h.set(keyRef{s: k, isStr: true})
 }
 
@@ -189,14 +189,14 @@ func (h *HashSet) ContainString(k string) bool {
 	return h.has(keyRef{s: k, isStr: true})
 }
 
-// Delete 从集合中删除键；键不存在时不做任何事。
+// Remove 从集合中删除键；键不存在时不做任何事。
 // 键长度必须小于 65535，否则 panic。
-func (h *HashSet) Delete(k []byte) {
+func (h *HashSet) Remove(k []byte) {
 	h.del(keyRef{b: k})
 }
 
-// DeleteString 是 Delete 的 string 版本。键长度必须小于 65535，否则 panic。
-func (h *HashSet) DeleteString(k string) {
+// RemoveString 是 Remove 的 string 版本。键长度必须小于 65535，否则 panic。
+func (h *HashSet) RemoveString(k string) {
 	h.del(keyRef{s: k, isStr: true})
 }
 
@@ -210,6 +210,45 @@ func (h *HashSet) Len() int {
 		b.lock.RUnlock()
 	}
 	return total
+}
+
+// ToSlice 将当前所有存活key导出为 []string 快照
+func (h *HashSet) ToSlice() []string {
+	// 先用 Len 预分配容量，减少切片扩容
+	out := make([]string, 0, h.Len())
+
+	for i := range h.buckets {
+		b := &h.buckets[i]
+		b.lock.RLock()
+
+		// 遍历字节流 chunk
+		for ci, c := range b.chunks {
+			pos := 0
+			for pos < len(c) {
+				keyLen := int(c[pos])<<8 | int(c[pos+1])
+				headerSize := 2
+				pairTotal := headerSize + keyLen
+				absPos := uint(ci*b.chunkSize + pos)
+
+				keyBytes := c[pos+headerSize : pos+pairTotal]
+				hash := h.hash(keyBytes)
+
+				// 存活判定：和 compact 保持一致
+				if livePos, ok := b.index[hash]; ok && livePos == absPos {
+					out = append(out, string(keyBytes))
+				}
+				pos += pairTotal
+			}
+		}
+
+		// 遍历 overflow 冲突map
+		for k := range b.overflow {
+			out = append(out, k)
+		}
+
+		b.lock.RUnlock()
+	}
+	return out
 }
 
 // —————————————————————— 内部实现 ——————————————————————
@@ -403,7 +442,7 @@ func (b *bucket) needCompact(percent int) bool {
 // 做法：逐个 chunk 复制到临时缓冲（b.scratch）后清空该 chunk，再按键在字节流中的先后顺序
 // 把存活的键重新追加到从 0 号开始的 chunk 中，并同步更新索引。
 // 判断一个键是否存活的方式：它的 hash 在 index 中的偏移是否正好等于它在字节流中的当前位置
-// （被删除的键在 Delete 时就把索引摘掉了）。
+// （被删除的键在 Remove 时就把索引摘掉了）。
 func (h *HashSet) compact(b *bucket) {
 	if len(b.chunks) == 0 {
 		b.deleteItemNum = 0

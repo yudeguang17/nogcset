@@ -55,18 +55,18 @@ go get github.com/yudeguang17/nogchashmap
 | `New(config ...Config) *HashSet` | 创建集合；配置非法会 panic |
 | `(*HashSet) Set(k []byte)` | 加入键；已存在则无操作 |
 | `(*HashSet) SetString(k string)` | 同上，string 版本 |
-| `(*HashSet) Has(k []byte) bool` | 判断键是否存在 |
-| `(*HashSet) HasString(k string) bool` | 同上，string 版本 |
+| `(*HashSet) Contain(k []byte) bool` | 判断键是否存在 |
+| `(*HashSet) ContainString(k string) bool` | 同上，string 版本 |
 | `(*HashSet) Delete(k []byte)` | 删除键；不存在则无操作 |
 | `(*HashSet) DeleteString(k string)` | 同上，string 版本 |
 | `(*HashSet) Len() int` | 键的个数，**精确** |
 
-`Set` 与 `SetString` 写入的键可以互相查到（同一段字节的 hash 相同），跨类型 `Has` / `Delete` 也能正常工作。
+`Set` 与 `SetString` 写入的键可以互相查到（同一段字节的 hash 相同），跨类型 `Contain` / `Delete` 也能正常工作。
 
 ## 键长度约束
 
 - 允许：`len(key) <= 65534`（`nogchashmap.MaxKeyLen`）。
-- 不允许：`len(key) >= 65535` —— `Set` / `SetString` / `Has` / `HasString` / `Delete` / `DeleteString`
+- 不允许：`len(key) >= 65535` —— `Set` / `SetString` / `Contain` / `ContainString` / `Delete` / `DeleteString`
   收到这种键会**立即 panic**：
 
 ```text
@@ -114,13 +114,13 @@ s := nogchashmap.New(nogchashmap.Config{
 
 **热路径堆分配**（`TestNoAllocOnHotPaths`，`testing.AllocsPerRun` 200 次 + `runtime.MemStats` 单次复核）：
 
-| 路径 | 堆分配次数 |
-| --- | --- |
-| `Has` 命中 / 未命中（`[]byte`） | 0 |
-| `HasString` 命中 / 未命中 | 0 |
+| 路径                             | 堆分配次数 |
+|--------------------------------| --- |
+| `Contain` 命中 / 未命中（`[]byte`）   | 0 |
+| `ContainString` 命中 / 未命中           | 0 |
 | `Set` 已有键（`[]byte` / `string`） | 0 |
-| `Delete` 未命中 / 命中 | 0 |
-| `Len` | 0 |
+| `Delete` 未命中 / 命中              | 0 |
+| `Len`                          | 0 |
 
 **插入全新键的分配是摊销的**（`TestAmortizedAllocOnInsert`）：
 插入 100000 个全新键共发生 8214 次堆分配，即**每个键约 0.082 次**，主要来自每个分片索引 map 的增长与 chunk 分配。
@@ -157,7 +157,7 @@ s := nogchashmap.New(nogchashmap.Config{
 
 ## 并发安全
 
-- `HashSet` 可被多个 goroutine 并发使用：`Has` 走分片读锁，`Set` / `Delete` 走分片写锁，`Len` 依次加各分片读锁。
+- `HashSet` 可被多个 goroutine 并发使用：`Contain` 走分片读锁，`Set` / `Delete` 走分片写锁，`Len` 依次加各分片读锁。
 - 后创建的实例不会影响已有实例的配置或数据。
 - 注意：并发**调用构造函数**没有特殊保护，但构造函数只写自己实例的字段，不共享状态。
 
