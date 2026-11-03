@@ -212,7 +212,8 @@ func (h *HashSet) Len() int {
 	return total
 }
 
-// ToSlice 将当前所有存活key导出为 []string 快照
+// ToSlice 将当前所有存活键导出为 []string 快照，不保证顺序。
+// 导出的字符串是独立副本，之后对集合的增删不影响已导出的内容。
 func (h *HashSet) ToSlice() []string {
 	// 先用 Len 预分配容量，减少切片扩容
 	out := make([]string, 0, h.Len())
@@ -221,24 +222,21 @@ func (h *HashSet) ToSlice() []string {
 		b := &h.buckets[i]
 		b.lock.RLock()
 
-		// 遍历字节流 chunk
-		for ci, c := range b.chunks {
-			pos := 0
-			for pos < len(c) {
-				keyLen := int(c[pos])<<8 | int(c[pos+1])
-				headerSize := 2
-				pairTotal := headerSize + keyLen
-				absPos := uint(ci*b.chunkSize + pos)
-
-				keyBytes := c[pos+headerSize : pos+pairTotal]
-				hash := h.hash(keyBytes)
-
-				// 存活判定：和 compact 保持一致
-				if livePos, ok := b.index[hash]; ok && livePos == absPos {
-					out = append(out, string(keyBytes))
-				}
-				pos += pairTotal
-			}
+		// 直接遍历索引：索引中的每个条目都对应一个存活在字节流中的键。
+		// 位置解析方式与 keyEquals 一致：chunk 下标 = 偏移 / chunkSize，块内偏移 = 偏移 % chunkSize。
+		// 这样既不需要重算 hash（h.hash / h.hashString 可能已被测试替换成与写入时不一致的实现），
+		// 也不会扫描到已删除键残留在字节流中的死字节。
+		// 直接遍历索引：索引中的每个条目都对应一个存活在字节流中的键。
+		// 位置解析方式与 keyEquals 一致：chunk 下标 = 偏移 / chunkSize，块内偏移 = 偏移 % chunkSize。
+		// 这样既不需要重算 hash（h.hash / h.hashString 可能已被测试替换成与写入时不一致的实现），
+		// 也不会扫描到已删除键残留在字节流中的死字节。
+		for _, pos := range b.index {
+			chunkIdx := int(pos) / b.chunkSize
+			off := int(pos) % b.chunkSize
+			chunk := b.chunks[chunkIdx]
+			keyLen := int(chunk[off])<<8 | int(chunk[off+1])
+			keyBegin := off + keyLenFieldSize
+			out = append(out, string(chunk[keyBegin:keyBegin+keyLen]))
 		}
 
 		// 遍历 overflow 冲突map

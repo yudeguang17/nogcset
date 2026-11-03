@@ -16,22 +16,22 @@ import (
 
 func main() {
 	s := nogchashmap.New()
-	s.SetString("hello")
-	s.Set([]byte("world"))
+	s.AddString("hello")
+	s.Add([]byte("world"))
 
-	fmt.Println(s.HasString("hello"), s.Has([]byte("world"))) // true true
-	fmt.Println(s.Len())                                      // 2
+	fmt.Println(s.ContainString("hello"), s.Contain([]byte("world"))) // true true
+	fmt.Println(s.Len())                                             // 2
 
-	s.DeleteString("hello")
-	fmt.Println(s.HasString("hello"), s.Len()) // false 1
+	s.RemoveString("hello")
+	fmt.Println(s.ContainString("hello"), s.Len()) // false 1
 }
 ```
 
 ## 特性
 
-- **低 GC 压力**：`Has` / `HasString` / 重复 `Set` / `Delete` / `Len` 等热路径实测 **0 次堆分配**（见下节「实测数据」）。
+- **低 GC 压力**：`Contain` / `ContainString` / 重复 `Add` / `Remove` / `Len` 等热路径实测 **0 次堆分配**（见下节「实测数据」）。
 - **无 hash 冲突问题**：索引用 64 位 hash 做键，冲突的键落到该分片的回退 map，查询会自动回落查找。
-- **支持增删改**：`Set` 已存在的键是空操作（集合没有值，不存在"改值"），`Delete` 之后不会再读到旧数据。
+- **支持增删改**：`Add` 已存在的键是空操作（集合没有值，不存在"改值"），`Remove` 之后不会再读到旧数据。
 - **分片并发**：512 个分片各持一把读写锁，读写冲突被分散；实例可被多个 goroutine 并发使用。
 - **键长度受限且显式**：键长度必须**小于 65535**（最大 65534），超限**直接 panic**，绝不静默截断。
 - **配置属于实例**：两个实例可以用不同配置，互不影响。
@@ -53,20 +53,21 @@ go get github.com/yudeguang17/nogchashmap
 | 方法 | 说明 |
 | --- | --- |
 | `New(config ...Config) *HashSet` | 创建集合；配置非法会 panic |
-| `(*HashSet) Set(k []byte)` | 加入键；已存在则无操作 |
-| `(*HashSet) SetString(k string)` | 同上，string 版本 |
+| `(*HashSet) Add(k []byte)` | 加入键；已存在则无操作 |
+| `(*HashSet) AddString(k string)` | 同上，string 版本 |
 | `(*HashSet) Contain(k []byte) bool` | 判断键是否存在 |
 | `(*HashSet) ContainString(k string) bool` | 同上，string 版本 |
-| `(*HashSet) Delete(k []byte)` | 删除键；不存在则无操作 |
-| `(*HashSet) DeleteString(k string)` | 同上，string 版本 |
+| `(*HashSet) Remove(k []byte)` | 删除键；不存在则无操作 |
+| `(*HashSet) RemoveString(k string)` | 同上，string 版本 |
 | `(*HashSet) Len() int` | 键的个数，**精确** |
+| `(*HashSet) ToSlice() []string` | 导出当前所有存活键的 `[]string` 快照 |
 
-`Set` 与 `SetString` 写入的键可以互相查到（同一段字节的 hash 相同），跨类型 `Contain` / `Delete` 也能正常工作。
+`Add` 与 `AddString` 写入的键可以互相查到（同一段字节的 hash 相同），跨类型 `Contain` / `Remove` 也能正常工作。
 
 ## 键长度约束
 
 - 允许：`len(key) <= 65534`（`nogchashmap.MaxKeyLen`）。
-- 不允许：`len(key) >= 65535` —— `Set` / `SetString` / `Contain` / `ContainString` / `Delete` / `DeleteString`
+- 不允许：`len(key) >= 65535` —— `Add` / `AddString` / `Contain` / `ContainString` / `Remove` / `RemoveString`
   收到这种键会**立即 panic**：
 
 ```text
@@ -118,8 +119,8 @@ s := nogchashmap.New(nogchashmap.Config{
 |--------------------------------| --- |
 | `Contain` 命中 / 未命中（`[]byte`）   | 0 |
 | `ContainString` 命中 / 未命中           | 0 |
-| `Set` 已有键（`[]byte` / `string`） | 0 |
-| `Delete` 未命中 / 命中              | 0 |
+| `Add` 已有键（`[]byte` / `string`） | 0 |
+| `Remove` 未命中 / 命中              | 0 |
 | `Len`                          | 0 |
 
 **插入全新键的分配是摊销的**（`TestAmortizedAllocOnInsert`）：
@@ -129,13 +130,13 @@ s := nogchashmap.New(nogchashmap.Config{
 
 | 基准 | ns/op | allocs/op |
 | --- | --- | --- |
-| `BenchmarkSet`（重复加入已有键，即空操作快路径） | 42.2 | 0 |
-| `BenchmarkSetString`（同上） | 51.7 | 0 |
-| `BenchmarkHas` | 33.1 | 0 |
-| `BenchmarkHasString` | 49.8 | 0 |
-| `BenchmarkSetThenDelete`（真实插入 + 删除） | 100.7 | 0 |
-| `BenchmarkStdMapSet`（对照：`map[string]struct{}`） | 14.4 | 0 |
-| `BenchmarkStdMapHas`（对照） | 7.11 | 0 |
+| `BenchmarkAdd`（重复加入已有键，即空操作快路径） | 42.2 | 0 |
+| `BenchmarkAddString`（同上） | 51.7 | 0 |
+| `BenchmarkContain` | 33.1 | 0 |
+| `BenchmarkContainString` | 49.8 | 0 |
+| `BenchmarkAddThenRemove`（真实插入 + 删除） | 100.7 | 0 |
+| `BenchmarkStdMapAdd`（对照：`map[string]struct{}`） | 14.4 | 0 |
+| `BenchmarkStdMapContain`（对照） | 7.11 | 0 |
 
 说明：`-benchmem` 的 `B/op` 列会把基准运行期间「插入时为分片一次性分配的 chunk」按 `b.N` 摊销，
 所以 `B/op` 不为 0 而 `allocs/op` 为 0；判断某条路径是否真的零分配，以上面的 `AllocsPerRun` 结论为准。
@@ -157,14 +158,14 @@ s := nogchashmap.New(nogchashmap.Config{
 
 ## 并发安全
 
-- `HashSet` 可被多个 goroutine 并发使用：`Contain` 走分片读锁，`Set` / `Delete` 走分片写锁，`Len` 依次加各分片读锁。
+- `HashSet` 可被多个 goroutine 并发使用：`Contain` 走分片读锁，`Add` / `Remove` 走分片写锁，`Len` 依次加各分片读锁。
 - 后创建的实例不会影响已有实例的配置或数据。
 - 注意：并发**调用构造函数**没有特殊保护，但构造函数只写自己实例的字段，不共享状态。
 
 ## 测试与基准
 
 ```bash
-go test ./...                                  # 11 个测试
+go test ./...                                  # 17 个测试
 go test -run '^$' -bench . -benchmem ./...     # 基准（-run '^$' 表示不跑测试）
 go test -run TestNoAllocOnHotPaths -v ./...    # 复核热路径零分配
 ```
@@ -172,12 +173,13 @@ go test -run TestNoAllocOnHotPaths -v ./...    # 复核热路径零分配
 测试覆盖：与标准库 `map[string]bool` 对账的增删查（含空键、含 `0x00` 的二进制键、最长键）、
 键长边界与 panic、`[]byte`/`string` 互查、强制 hash 冲突下的回退 map 语义与
 「删除后不再存在」回归、实例配置隔离与非法配置 panic、最长键正好填满 chunk、
-空间回收后 `Len`/`Has` 仍正确、8 goroutine 并发混合读写删对账、热路径零分配、插入分配摊销、首次小 chunk。
+空间回收后 `Len`/`Contain` 仍正确、8 goroutine 并发混合读写删对账、热路径零分配、插入分配摊销、首次小 chunk、
+`ToSlice` 快照导出（基本/删除后/hash 冲突/空间回收后/hash 函数被替换/并发导出/快照独立性）。
 
 ## 已知限制
 
 - 只支持字节序列键（`[]byte` / `string`），没有像 noGcMap 那样的 `int` 键版本。
-- 不提供遍历 / 迭代器，也没有 `Clear`；如需这些能力可以在此实现上自行扩展。
+- 不提供迭代器（可先用 `ToSlice` 导出快照再遍历），也没有 `Clear`；如需这些能力可以在此实现上自行扩展。
 - 空间回收是**在分片写锁内一次性完成**的：如果 `MultiplesOf64KForChunkSize` 配置得很大
   （例如 1000，即 64MB），一次回收会把该分片阻塞较长时间，建议按实际数据量选择合适的大小。
 - 内存下限为「被触碰的分片数 × 4KB」，上限随数据量增长；这是「零拷贝字节流」方案的固有代价。
