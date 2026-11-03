@@ -45,8 +45,13 @@ go get github.com/yudeguang17/nogchashmap
 ```
 
 要求 **Go 1.24 及以上**（用到了 `hash/maphash` 的 `Bytes` / `String`）。若要兼容更早的 Go 版本，
-只需把 `New` 里的 `h.hash` / `h.hashString` 换成其它哈希实现（例如 `github.com/cespare/xxhash` 的 `xxhash.Sum64`），
-其余代码不需要改。
+可以把 `New` 里的 `h.hash` / `h.hashString` 换成其它哈希实现（例如 `github.com/cespare/xxhash` 的
+`xxhash.Sum64` / `xxhash.Sum64String`）。
+
+**注意**：替换后的两个 hash 函数必须对同一段字节序列输出**完全相同**的值
+（正如 `maphash.Bytes` 与 `maphash.String` 所保证的那样）。若两者不一致，
+空间回收（compact）在扫描字节流时用 `h.hash` 重算的 hash 会与写入索引时的 hash 对不上，
+存活键可能被误判为已删除，导致索引悬空、查询返回错误结果甚至 panic。
 
 ## API
 
