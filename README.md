@@ -1,4 +1,4 @@
-# nogchashmap
+# nogcset
 
 一个**低 GC 压力**的哈希集合（hash set），只保存键、不保存值。
 
@@ -11,11 +11,11 @@ package main
 import (
 	"fmt"
 
-	"github.com/yudeguang17/nogchashmap"
+	"github.com/yudeguang17/nogcset"
 )
 
 func main() {
-	s := nogchashmap.New()
+	s := nogcset.New()
 	s.AddString("hello")
 	s.Add([]byte("world"))
 
@@ -41,7 +41,7 @@ func main() {
 ## 安装
 
 ```bash
-go get github.com/yudeguang17/nogchashmap
+go get github.com/yudeguang17/nogcset
 ```
 
 要求 **Go 1.24 及以上**（用到了 `hash/maphash` 的 `Bytes` / `String`）。若要兼容更早的 Go 版本，
@@ -71,12 +71,12 @@ go get github.com/yudeguang17/nogchashmap
 
 ## 键长度约束
 
-- 允许：`len(key) <= 65534`（`nogchashmap.MaxKeyLen`）。
+- 允许：`len(key) <= 65534`（`nogcset.MaxKeyLen`）。
 - 不允许：`len(key) >= 65535` —— `Add` / `AddString` / `Contain` / `ContainString` / `Remove` / `RemoveString`
   收到这种键会**立即 panic**：
 
 ```text
-panic: nogchashmap: 非法键长度 65535：键长度必须小于 65535
+panic: nogcset: 非法键长度 65535：键长度必须小于 65535
 ```
 
 这样处理的原因：键长度在字节流里用 2 字节（大端 `uint16`）记录，长度达到 65535 以上就会被截断，
@@ -87,7 +87,7 @@ panic: nogchashmap: 非法键长度 65535：键长度必须小于 65535
 ## 配置
 
 ```go
-s := nogchashmap.New(nogchashmap.Config{
+s := nogcset.New(nogcset.Config{
 	NeedDeletePercent:          50, // 1..100，默认 50
 	MultiplesOf64KForChunkSize: 1,  // 1..1000（1=64KB，1000=64MB），默认 1
 })
@@ -103,7 +103,7 @@ s := nogchashmap.New(nogchashmap.Config{
 
 ## 与 noGcMap 的差异
 
-| 维度 | noGcMap | nogchashmap |
+| 维度 | noGcMap | nogcset |
 | --- | --- | --- |
 | 数据模型 | `map[key]value`，键和值都存 | 只能存键（hash set），没有值 |
 | 键长度 | 长度字段 2 字节，超长时会被静默截断（配置 chunkSize > 64KB 时尤其明显） | 键长度 ≥ 65535 直接 panic，不存在截断 |

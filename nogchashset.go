@@ -1,4 +1,4 @@
-// Package nogchashmap 是一个低 GC 压力的哈希集合（hash set）实现：只保存键、不保存值。
+// Package nogcset 是一个低 GC 压力的哈希集合（hash set）实现：只保存键、不保存值。
 //
 // 设计思路与 https://github.com/yudeguang17/noGcMap 一致：把不利于 GC 的复杂容器拆成
 // 「基础类型索引 + []byte 字节流 + 少量回退 map」——
@@ -21,7 +21,7 @@
 //     并且每个实例的 seed 不同，天然抵御构造冲突键的攻击；
 //  6. 每个分片第一次写入只分配一个 4KB 的小 chunk，之后的 chunk 才按配置大小分配，
 //     避免小集合也占满「512 个分片 × 64KB」。
-package nogchashmap
+package nogcset
 
 import (
 	"bytes"
@@ -146,13 +146,13 @@ func New(config ...Config) *HashSet {
 	if len(config) > 0 {
 		if v := config[0].NeedDeletePercent; v != 0 {
 			if v < 1 || v > 100 {
-				panic(fmt.Sprintf("nogchashmap: 非法配置 NeedDeletePercent=%d，必须介于 1 到 100 之间", v))
+				panic(fmt.Sprintf("nogcset: 非法配置 NeedDeletePercent=%d，必须介于 1 到 100 之间", v))
 			}
 			h.needDeletePercent = v
 		}
 		if v := config[0].MultiplesOf64KForChunkSize; v != 0 {
 			if v < 1 || v > 1000 {
-				panic(fmt.Sprintf("nogchashmap: 非法配置 MultiplesOf64KForChunkSize=%d，必须介于 1 到 1000 之间", v))
+				panic(fmt.Sprintf("nogcset: 非法配置 MultiplesOf64KForChunkSize=%d，必须介于 1 到 1000 之间", v))
 			}
 			h.chunkSize = v * oneChunkSize
 		}
@@ -254,7 +254,7 @@ func (h *HashSet) ToSlice() []string {
 // mustValidKey 校验键长度；长度 >= 65535 的键直接 panic。
 func (h *HashSet) mustValidKey(k keyRef) {
 	if n := k.Len(); n >= keyLenThreshold {
-		panic(fmt.Sprintf("nogchashmap: 非法键长度 %d：键长度必须小于 %d", n, keyLenThreshold))
+		panic(fmt.Sprintf("nogcset: 非法键长度 %d：键长度必须小于 %d", n, keyLenThreshold))
 	}
 }
 

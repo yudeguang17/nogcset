@@ -1,4 +1,4 @@
-package nogchashmap
+package nogcset
 
 import (
 	"bytes"
